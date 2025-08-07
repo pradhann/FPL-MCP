@@ -18,8 +18,8 @@ from typing import Dict, Any
 
 import requests
 
-from ..utils import fpl_data
-from ..server import mcp
+from utils import fpl_data
+from server import mcp
 
 # Team ID to query. Update this value if you wish to inspect a different team.
 TEAM_ID: int = 4118472

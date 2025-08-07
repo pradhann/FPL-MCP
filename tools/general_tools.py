@@ -15,8 +15,8 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from ..utils import fpl_data
-from ..server import mcp
+from utils import fpl_data
+from server import mcp
 
 
 def _apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Dict, Any, Optional
 
-from ..utils import fpl_data
-from ..server import mcp
+from utils import fpl_data
+from server import mcp
 
 
 @mcp.tool()
