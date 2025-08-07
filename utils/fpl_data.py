@@ -68,6 +68,17 @@ def get_bootstrap_data(force_refresh: bool = False) -> Dict[str, Any]:
     data = _download_json("/bootstrap-static/")
     with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(data, f)
+    # Additionally cache individual top-level keys for convenience
+    for key, value in data.items():
+        # Skip simple numeric keys or None
+        filename = f"{key}.json"
+        path = DATA_DIR / filename
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(value, f)
+        except Exception:
+            # Some values may not be serializable (e.g. None) – ignore
+            pass
     return data
 
 
@@ -136,6 +147,168 @@ def get_player_detail(player_id: int) -> Dict[str, Any]:
     """
     endpoint = f"/element-summary/{player_id}/"
     return _download_json(endpoint)
+
+def get_fixtures_df(force_refresh: bool = False) -> pd.DataFrame:
+    """Return a DataFrame containing all fixtures for the season.
+
+    The returned DataFrame includes the home and away team IDs, the
+    final scores (if finished), and the kickoff time.  To speed up
+    repeated queries the raw JSON is cached in the ``data`` folder.
+
+    Args:
+        force_refresh: If True, download fresh fixtures data even if
+            a cache file exists.
+
+    Returns:
+        A Pandas DataFrame with columns such as ``id``, ``event``,
+        ``kickoff_time``, ``team_h``, ``team_h_score``, ``team_a``,
+        ``team_a_score``, and ``finished``.
+    """
+    cache_path = DATA_DIR / "fixtures.json"
+    if not force_refresh and cache_path.exists():
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = _download_json("/fixtures/")
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    # Convert to DataFrame
+    df = pd.DataFrame(data)
+    # Ensure kickoff_time is datetime for sorting; errors='coerce' handles None
+    if "kickoff_time" in df.columns:
+        df["kickoff_time"] = pd.to_datetime(df["kickoff_time"], errors="coerce")
+    return df
+
+
+def get_player_history_df(player_id: int) -> pd.DataFrame:
+    """Return a DataFrame of a player's gameweek history for the current season.
+
+    This pulls the ``history`` field from ``element-summary/{player_id}/``
+    and returns it as a DataFrame.  Each row represents a single
+    gameweek with stats such as goals, assists, minutes, yellow
+    cards and total points.
+
+    Args:
+        player_id: The element ID of the player.
+
+    Returns:
+        A DataFrame with columns including ``round``, ``minutes``,
+        ``goals_scored``, ``assists``, ``yellow_cards``,
+        ``red_cards``, ``total_points``, ``goals_conceded``, etc.
+    """
+    data = get_player_detail(player_id)
+    history = data.get("history", [])
+    df = pd.DataFrame(history)
+    return df
+
+
+def get_team_id_by_name(team_name: str) -> Optional[int]:
+    """Return the team ID corresponding to a case-insensitive team name.
+
+    Args:
+        team_name: Team name (e.g. "Manchester United" or "MAN UTD").
+
+    Returns:
+        The team ID if found, otherwise None.
+    """
+    teams = get_teams_df()
+    # Normalize names: remove punctuation and casefold
+    normalized = team_name.strip().casefold()
+    # Attempt exact match on full name or short name
+    for _, row in teams.iterrows():
+        if row["name"].casefold() == normalized or row.get("short_name", "").casefold() == normalized:
+            return int(row["id"])
+    # Fallback to partial match: return the first team whose name contains the query
+    for _, row in teams.iterrows():
+        if normalized in row["name"].casefold() or normalized in row.get("short_name", "").casefold():
+            return int(row["id"])
+    return None
+
+
+def get_player_id_by_name(name: str) -> Optional[int]:
+    """Return the element ID corresponding to a player's full or partial name.
+
+    The search is case-insensitive and matches either the player's
+    first_name or second_name, or the combination of both.
+
+    Args:
+        name: Player name (full or partial).
+
+    Returns:
+        The player ID if found, otherwise None.
+    """
+    df = get_elements_df()
+    name = name.strip().casefold()
+    # Try exact match on full name
+    for _, row in df.iterrows():
+        full = f"{row['first_name']} {row['second_name']}".casefold()
+        if full == name:
+            return int(row["id"])
+    # Try partial match on any name component
+    for _, row in df.iterrows():
+        if name in row["first_name"].casefold() or name in row["second_name"].casefold():
+            return int(row["id"])
+    return None
+
+
+def compute_team_summary(team: int, last_n_games: int = 5) -> Dict[str, Any]:
+    """Compute a summary of a team's recent performance.
+
+    This examines completed fixtures involving the specified team and
+    returns aggregate statistics for the most recent ``last_n_games``.
+
+    Args:
+        team: Team ID.
+        last_n_games: Number of completed games to include.
+
+    Returns:
+        A dictionary with keys ``games``, ``wins``, ``draws``, ``losses``,
+        ``goals_scored``, ``goals_conceded`` and ``points``. If the
+        team has not played any completed games, the dictionary will
+        contain zeros.
+    """
+    fixtures = get_fixtures_df()
+    # Filter completed fixtures involving this team
+    mask = (
+        fixtures["finished"].fillna(False).astype(bool)
+        & ((fixtures["team_h"] == team) | (fixtures["team_a"] == team))
+    )
+    team_fixtures = fixtures[mask].copy()
+    # Sort by kickoff_time descending (most recent first)
+    if "kickoff_time" in team_fixtures.columns:
+        team_fixtures.sort_values(by="kickoff_time", ascending=False, inplace=True)
+    else:
+        # fallback to event id if no kickoff_time
+        team_fixtures.sort_values(by="event", ascending=False, inplace=True)
+    # Take last N games
+    team_fixtures = team_fixtures.head(last_n_games)
+    summary = {
+        "games": 0,
+        "wins": 0,
+        "draws": 0,
+        "losses": 0,
+        "goals_scored": 0,
+        "goals_conceded": 0,
+        "points": 0,
+    }
+    for _, row in team_fixtures.iterrows():
+        summary["games"] += 1
+        if row["team_h"] == team:
+            goals_for, goals_against = row.get("team_h_score", 0), row.get("team_a_score", 0)
+        else:
+            goals_for, goals_against = row.get("team_a_score", 0), row.get("team_h_score", 0)
+        summary["goals_scored"] += int(goals_for or 0)
+        summary["goals_conceded"] += int(goals_against or 0)
+        # Determine result
+        if goals_for > goals_against:
+            summary["wins"] += 1
+            summary["points"] += 3
+        elif goals_for == goals_against:
+            summary["draws"] += 1
+            summary["points"] += 1
+        else:
+            summary["losses"] += 1
+    return summary
 
 
 def query_players(

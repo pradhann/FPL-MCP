@@ -18,8 +18,8 @@ from typing import Dict, Any
 
 import requests
 
-from utils import fpl_data
-from server import mcp
+from ..utils import fpl_data
+from ..server import mcp
 
 # Team ID to query. Update this value if you wish to inspect a different team.
 TEAM_ID: int = 4118472
@@ -35,9 +35,7 @@ def _fetch_team_event_picks(team_id: int, gw: int) -> Dict[str, Any]:
     Returns:
         JSON dictionary containing picks and chip usage.
     """
-    endpoint = (
-        f"https://fantasy.premierleague.com/api/entry/{team_id}/event/{gw}/picks/"
-    )
+    endpoint = f"https://fantasy.premierleague.com/api/entry/{team_id}/event/{gw}/picks/"
     resp = requests.get(endpoint)
     resp.raise_for_status()
     return resp.json()
@@ -66,7 +64,7 @@ def get_team_picks(gw: int) -> str:
     ============================================
     Position  Player               Team     Price   Pts  Mult  C/V
     ------------------------------------------------------------
-    GK        Ederson             MCI      5.5    12    1
+    GK        Ederson             MCI      5.5    12    1      
     DEF       Alexander-Arnold    LIV      8.0    15    2      C
     ...
     ````
@@ -92,22 +90,16 @@ def get_team_picks(gw: int) -> str:
         price_m = player["now_cost"] / 10.0
         points = player["total_points"]
         mult = pick.get("multiplier", 1)
-        is_cap = (
-            "C"
-            if pick.get("is_captain", False)
-            else ("V" if pick.get("is_vice_captain", False) else "")
-        )
-        rows.append(
-            {
-                "Position": pos_short,
-                "Player": name,
-                "Team": team_name,
-                "Price": price_m,
-                "Pts": points,
-                "Mult": mult,
-                "C/V": is_cap,
-            }
-        )
+        is_cap = "C" if pick.get("is_captain", False) else ("V" if pick.get("is_vice_captain", False) else "")
+        rows.append({
+            "Position": pos_short,
+            "Player": name,
+            "Team": team_name,
+            "Price": price_m,
+            "Pts": points,
+            "Mult": mult,
+            "C/V": is_cap,
+        })
     if not rows:
         return f"No picks found for team {TEAM_ID} in gameweek {gw}."
     # Sort by position order: GK, DEF, MID, FWD then by multiplier descending

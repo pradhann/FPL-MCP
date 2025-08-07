@@ -10,14 +10,15 @@ using natural language via Claude for Desktop or any other MCP client.
 ## Folder Layout
 
 ```
-mix_server/
+fpl_server/
 │
 ├── data/             # Local cache of FPL API responses
 │
 ├── tools/            # MCP tool definitions
 │   ├── __init__.py
-│   ├── query_tools.py    # General player‐query tool
-│   └── team_tools.py     # Team/fixture tools
+│   ├── query_tools.py      # Legacy player-only query tool (v1)
+│   ├── general_tools.py    # General querying of players, fixtures, teams; team/player summaries
+│   └── team_tools.py       # Team picks tool (manager-specific)
 │
 ├── utils/            # Reusable logic for data fetching and querying
 │   ├── __init__.py
@@ -36,15 +37,24 @@ mix_server/
   folder. Other helper functions provide easy access to players,
   teams and positions as Pandas DataFrames.
 
-* **General Query Tool**: The tool `query_fpl_players` accepts a
-  flexible dictionary of filter conditions and returns a formatted
-  table of players.  The supported comparison operators are
-  documented in the function docstring so the LLM can construct
-  appropriate arguments.
+* **General Query Tools**: Version 2 introduces a more flexible tool
+  `query_fpl_data` (found in ``tools/general_tools.py``).  It
+  accepts an ``entity`` parameter (``players``, ``fixtures`` or
+  ``teams``) plus a dictionary of filters, optional sort criteria
+  and a limit.  This enables complex queries such as "find
+  defenders with the most yellow cards and at least 50 points",
+  "list upcoming fixtures for United", or "rank teams by home
+  attacking strength" without defining a separate tool for each
+  question.  The original `query_fpl_players` remains for
+  backwards compatibility.
 
-* **Team Tools**: A separate tool provides access to user‑specific
-  information such as team picks for a given gameweek. You can
-  configure your own `TEAM_ID` in `tools/team_tools.py`.
+* **Team & Player History Tools**: Additional tools in
+  ``general_tools.py`` summarise a team's recent performance
+  (`get_team_summary`) and provide a player's gameweek-by-gameweek
+  history (`get_player_history`).  These build on the fixtures and
+  element-summary endpoints to deliver ready-made summaries.  A
+  separate team picks tool (`get_team_picks` in ``team_tools.py``)
+  exposes your chosen squad for a specific gameweek.
 
 * **FastMCP**: The server is built using `FastMCP` from the
   `mcp` SDK. Since external package installation is unavailable in
@@ -53,6 +63,8 @@ mix_server/
   `mcp_sdk/` at the project root.
 
 To run the server locally, add the absolute path to this directory
-in your Claude configuration and start the server using `python
-main.py`.  Ensure you have internet access so that the FPL API
-requests succeed.
+in your Claude configuration and start the server using either
+`python main.py` or, if you are using [`uv`](https://github.com/astral-sh/uv),
+`uv run main.py`.  The Claude desktop configuration should specify
+the `fpl_server` entry as shown in your JSON snippet.  Ensure you
+have internet access so that the FPL API requests succeed.
