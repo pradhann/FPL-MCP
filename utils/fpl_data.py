@@ -1,0 +1,250 @@
+"""
+Utility functions for fetching and querying Fantasy Premier League data.
+
+This module encapsulates calls to the public FPL API and
+provides Pandas DataFrames representing players, teams and
+positions. It also implements a simple query mechanism that
+allows filtering and sorting the player table based on
+user-supplied conditions.
+
+Because this environment does not have access to PyPI, the MCP
+SDK is vendored into the repository.  See README.md for details.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
+
+import pandas as pd
+import requests
+
+
+# Base URL for the Fantasy Premier League API
+FPL_BASE_URL = "https://fantasy.premierleague.com/api"
+
+# Directory where cached data lives
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _download_json(endpoint: str) -> Dict[str, Any]:
+    """Download JSON data from the given FPL API endpoint.
+
+    Args:
+        endpoint: Path relative to the API base, e.g.
+            "/bootstrap-static/".
+
+    Returns:
+        The decoded JSON object.
+    """
+    url = FPL_BASE_URL + endpoint
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_bootstrap_data(force_refresh: bool = False) -> Dict[str, Any]:
+    """Retrieve the FPL bootstrap static dataset.
+
+    The bootstrap data contains the core tables used by the FPL
+    site: players (elements), teams, positions (element_types),
+    events, etc. To speed up repeated queries, this function caches
+    the response on disk.
+
+    Args:
+        force_refresh: If True, always download fresh data from
+            the API. Otherwise, use the cached file if present.
+
+    Returns:
+        A dictionary containing the bootstrap data.
+    """
+    cache_path = DATA_DIR / "bootstrap_static.json"
+    if not force_refresh and cache_path.exists():
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    data = _download_json("/bootstrap-static/")
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return data
+
+
+def get_elements_df(force_refresh: bool = False) -> pd.DataFrame:
+    """Return a DataFrame containing all players (elements).
+
+    The resulting DataFrame includes a few extra columns mapping
+    numeric IDs to human-friendly names (team_name and position).
+
+    Args:
+        force_refresh: If True, bypass the cache and fetch fresh
+            bootstrap data.
+
+    Returns:
+        A Pandas DataFrame with player information.
+    """
+    data = get_bootstrap_data(force_refresh=force_refresh)
+    elements = pd.DataFrame(data["elements"])
+    teams_df = pd.DataFrame(data["teams"])[["id", "name"]].rename(
+        columns={"id": "team", "name": "team_name"}
+    )
+    positions_df = pd.DataFrame(data["element_types"])[
+        ["id", "singular_name_short"]
+    ].rename(columns={"id": "element_type", "singular_name_short": "position"})
+    # Merge to add team_name and position
+    elements = elements.merge(teams_df, on="team", how="left")
+    elements = elements.merge(positions_df, on="element_type", how="left")
+    return elements
+
+
+def get_teams_df(force_refresh: bool = False) -> pd.DataFrame:
+    """Return a DataFrame of teams.
+
+    Args:
+        force_refresh: If True, fetch fresh bootstrap data.
+
+    Returns:
+        DataFrame with id, name, short_name and other team info.
+    """
+    data = get_bootstrap_data(force_refresh=force_refresh)
+    return pd.DataFrame(data["teams"])
+
+
+def get_element_types_df(force_refresh: bool = False) -> pd.DataFrame:
+    """Return a DataFrame of element types (positions).
+
+    Args:
+        force_refresh: If True, fetch fresh bootstrap data.
+
+    Returns:
+        DataFrame with id, singular_name_short and other fields.
+    """
+    data = get_bootstrap_data(force_refresh=force_refresh)
+    return pd.DataFrame(data["element_types"])
+
+
+def get_player_detail(player_id: int) -> Dict[str, Any]:
+    """Fetch detailed statistics for a single player.
+
+    Args:
+        player_id: The element ID of the player.
+
+    Returns:
+        A JSON dictionary representing the player's history and
+        upcoming fixtures.
+    """
+    endpoint = f"/element-summary/{player_id}/"
+    return _download_json(endpoint)
+
+
+def query_players(
+    filters: Dict[str, Any],
+    top_n: Optional[int] = 20,
+    force_refresh: bool = False,
+) -> str:
+    """Return a formatted table of players matching the provided filters.
+
+    This function provides a thin query layer over the FPL players
+    DataFrame. Filters can be specified as equality conditions or
+    comparison operations. The available comparison operators are:
+
+    - ``eq``: equal to (the default if only a raw value is supplied)
+    - ``lt``: strictly less than
+    - ``lte``: less than or equal to
+    - ``gt``: strictly greater than
+    - ``gte``: greater than or equal to
+    - ``contains``: case‐insensitive substring match (for text columns)
+
+    Examples::
+
+        # Players costing less than £8.0m (cost is stored in tenths)
+        filters = {"now_cost": {"lt": 80}}
+
+        # Midfielders (position code 4) from team id 1 with at least 100 total points
+        filters = {
+            "element_type": {"eq": 4},
+            "team": {"eq": 1},
+            "total_points": {"gte": 100},
+        }
+
+        # Players whose second_name contains "Silva"
+        filters = {"second_name": {"contains": "silva"}}
+
+    Args:
+        filters: Mapping of column names to either a single value
+            (interpreted as equality) or a dictionary specifying a
+            comparison operator.
+        top_n: Limit the number of players returned. If None,
+            return all matching rows.
+        force_refresh: If True, refresh the bootstrap cache before
+            querying.
+
+    Returns:
+        A string containing the filtered players formatted as a
+        table. Columns include ``id``, ``first_name``, ``second_name``,
+        ``position``, ``team_name``, ``now_cost`` (price in tenths of
+        millions), ``total_points``, ``minutes`` and
+        ``selected_by_percent``.
+    """
+    df = get_elements_df(force_refresh=force_refresh)
+    # Apply filters
+    for col, condition in filters.items():
+        if isinstance(condition, dict):
+            for op, value in condition.items():
+                if op == "eq":
+                    df = df[df[col] == value]
+                elif op == "lt":
+                    df = df[df[col] < value]
+                elif op == "lte":
+                    df = df[df[col] <= value]
+                elif op == "gt":
+                    df = df[df[col] > value]
+                elif op == "gte":
+                    df = df[df[col] >= value]
+                elif op == "contains":
+                    df = df[df[col].astype(str).str.contains(str(value), case=False, na=False)]
+                else:
+                    raise ValueError(f"Unsupported operator: {op}")
+        else:
+            # Equality check
+            df = df[df[col] == condition]
+
+    # Sort by total_points descending then by now_cost ascending
+    if "total_points" in df.columns:
+        df = df.sort_values(by=["total_points", "now_cost"], ascending=[False, True])
+
+    if top_n is not None:
+        df = df.head(top_n)
+
+    # Select and rename columns for display
+    display_columns = [
+        "id",
+        "first_name",
+        "second_name",
+        "position",
+        "team_name",
+        "now_cost",
+        "total_points",
+        "minutes",
+        "selected_by_percent",
+    ]
+    # Some older seasons may not have selected_by_percent; guard
+    cols_available = [c for c in display_columns if c in df.columns]
+    display_df = df[cols_available].copy()
+    # Convert cost to £m for readability
+    if "now_cost" in display_df.columns:
+        display_df.loc[:, "price_m"] = display_df["now_cost"] / 10.0
+        display_df.drop(columns=["now_cost"], inplace=True)
+        # Move price_m after team_name
+        cols = [
+            "id",
+            "first_name",
+            "second_name",
+            "position",
+            "team_name",
+            "price_m",
+        ] + [c for c in display_df.columns if c not in {"id", "first_name", "second_name", "position", "team_name", "price_m"}]
+        display_df = display_df[cols]
+
+    return display_df.to_string(index=False)
