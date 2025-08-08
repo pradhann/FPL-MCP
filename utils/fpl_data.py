@@ -106,6 +106,13 @@ def get_elements_df(force_refresh: bool = False) -> pd.DataFrame:
     # Merge to add team_name and position
     elements = elements.merge(teams_df, on="team", how="left")
     elements = elements.merge(positions_df, on="element_type", how="left")
+    # Convert selected_by_percent to float for numeric comparisons.  The API
+    # exposes this as a string (e.g. "25.4") so without conversion
+    # numeric filters and sorts will fail.  Coerce invalid values to NaN.
+    if "selected_by_percent" in elements.columns:
+        elements["selected_by_percent"] = pd.to_numeric(
+            elements["selected_by_percent"], errors="coerce"
+        )
     return elements
 
 

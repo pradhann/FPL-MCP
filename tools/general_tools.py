@@ -15,8 +15,12 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from utils import fpl_data
-from server import mcp
+# Use absolute imports rather than package-relative imports.  When this
+# server is run via ``uv --directory`` or as a script, modules are
+# imported from the top-level package (fpl_server).  Do not use
+# leading dots for relative imports.
+from utils import fpl_data  # type: ignore
+from server import mcp  # type: ignore
 
 
 def _apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:
@@ -116,63 +120,93 @@ def query_fpl_data(
     """
     entity = entity.lower()
     if entity == "players":
+        # Load player data with team names and positions.  This DataFrame
+        # retains the ``element_type`` column (1–4 for GK, DEF, MID, FWD)
+        # and converts ``selected_by_percent`` to float in
+        # ``fpl_data.get_elements_df``.  We derive a price column
+        # expressed in millions for easier filtering and display.
         df = fpl_data.get_elements_df()
-        # Add price in millions
         df["price_m"] = df["now_cost"] / 10.0
-        # Rename team_name for clarity
-        df = df.rename(columns={"team_name": "team_name"})
-        # Select relevant columns
-        df = df[
-            [
-                "id",
-                "first_name",
-                "second_name",
-                "position",
-                "team_name",
-                "price_m",
-                "total_points",
-                "minutes",
-                "goals_scored",
-                "assists",
-                "yellow_cards",
-                "red_cards",
-            ]
+        # We'll present a useful subset of columns by default.
+        # "element_type" is preserved so that callers can filter
+        # numerically (1=GKP, 2=DEF, 3=MID, 4=FWD).  "position" holds
+        # the string representation (GKP, DEF, MID, FWD).  Include
+        # ``selected_by_percent`` for ownership queries.
+        display_columns = [
+            "id",
+            "first_name",
+            "second_name",
+            "element_type",
+            "position",
+            "team_name",
+            "price_m",
+            "total_points",
+            "minutes",
+            "goals_scored",
+            "assists",
+            "yellow_cards",
+            "red_cards",
+            "selected_by_percent",
         ]
+        # Ensure only available columns are selected (in case of API
+        # changes).
+        display_columns = [c for c in display_columns if c in df.columns]
     elif entity == "fixtures":
+        # Load fixtures and map team IDs to names.  Rather than
+        # merging and dropping the ``id`` column (which can cause
+        # KeyError if ``id`` isn't present), use a mapping.
         df = fpl_data.get_fixtures_df()
         teams_df = fpl_data.get_teams_df()[["id", "name"]]
-        # Map team IDs to names
-        df = df.merge(teams_df, left_on="team_h", right_on="id", how="left").rename(
-            columns={"name": "team_h_name"}
-        ).drop(columns=["id"])
-        df = df.merge(teams_df, left_on="team_a", right_on="id", how="left").rename(
-            columns={"name": "team_a_name"}
-        ).drop(columns=["id"])
-        # Keep useful columns
-        df = df[
-            [
-                "event",
-                "kickoff_time",
-                "team_h_name",
-                "team_a_name",
-                "team_h_score",
-                "team_a_score",
-                "finished",
-            ]
+        team_map = dict(zip(teams_df["id"], teams_df["name"]))
+        df["team_h_name"] = df["team_h"].map(team_map)
+        df["team_a_name"] = df["team_a"].map(team_map)
+        # Define default display columns.  Include the fixture id
+        # (useful for debugging) and event (gameweek number).
+        display_columns = [
+            "id" if "id" in df.columns else None,
+            "event" if "event" in df.columns else None,
+            "kickoff_time" if "kickoff_time" in df.columns else None,
+            "team_h_name",
+            "team_a_name",
+            "team_h_score" if "team_h_score" in df.columns else None,
+            "team_a_score" if "team_a_score" in df.columns else None,
+            "finished" if "finished" in df.columns else None,
         ]
+        display_columns = [c for c in display_columns if c is not None]
     elif entity == "teams":
         df = fpl_data.get_teams_df()
-        # Select a subset of useful columns
-        df = df[["id", "name", "short_name", "strength_attack_home", "strength_defence_home", "strength_attack_away", "strength_defence_away"]]
+        display_columns = [
+            "id",
+            "name",
+            "short_name",
+            "strength_attack_home" if "strength_attack_home" in df.columns else None,
+            "strength_defence_home" if "strength_defence_home" in df.columns else None,
+            "strength_attack_away" if "strength_attack_away" in df.columns else None,
+            "strength_defence_away" if "strength_defence_away" in df.columns else None,
+        ]
+        display_columns = [c for c in display_columns if c is not None]
     else:
         raise ValueError(f"Unsupported entity: {entity}")
 
-    # Apply filters
+    # Validate filter keys before applying them.  Unknown keys
+    # indicate either a mistake in the query or a missing column.  We
+    # return a helpful error listing available fields.
     if filters:
+        invalid = [col for col in filters if col not in df.columns]
+        if invalid:
+            available = ", ".join(sorted(df.columns))
+            raise ValueError(
+                f"Unknown filter field(s): {', '.join(invalid)}. Available fields: {available}"
+            )
         df = _apply_filters(df, filters)
 
-    # Apply sorting
+    # Validate sort column if provided
     if sort_by:
+        if sort_by not in df.columns:
+            available = ", ".join(sorted(df.columns))
+            raise ValueError(
+                f"Unknown sort field '{sort_by}'. Available fields: {available}"
+            )
         df = df.sort_values(by=sort_by, ascending=(sort_order == "asc"))
     else:
         # Apply sensible default sorting
@@ -188,6 +222,12 @@ def query_fpl_data(
     # Convert datetime columns to strings for display
     for col in df.select_dtypes(include=["datetime64[ns]"]).columns:
         df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M")
+
+    # Select display columns in the defined order (if defined).  If
+    # ``display_columns`` is not set (which should not happen), fall
+    # back to all columns.
+    if isinstance(locals().get("display_columns"), list) and display_columns:
+        df = df[[col for col in display_columns if col in df.columns]]
 
     return df.to_string(index=False)
 

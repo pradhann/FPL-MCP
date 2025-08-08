@@ -18,8 +18,11 @@ from typing import Dict, Any
 
 import requests
 
-from utils import fpl_data
-from server import mcp
+# Absolute imports so that this module can be run from the project
+# root using uv or python without a package context.  Avoid leading
+# dots for relative imports.
+from utils import fpl_data  # type: ignore
+from server import mcp  # type: ignore
 
 # Team ID to query. Update this value if you wish to inspect a different team.
 TEAM_ID: int = 4118472

@@ -40,11 +40,14 @@ except ImportError as e:
 mcp = FastMCP("fpl_mcp")
 
 
-# Import tools so that their decorators register functions with the server.
+# Import tools so that their decorators and prompts register functions
+# with the server.  Use absolute imports rather than package-relative
+# ones so that the code works when run from the project root.
 # pylint: disable=unused-import
 from tools import query_tools  # noqa: F401
 from tools import team_tools   # noqa: F401
 from tools import general_tools  # noqa: F401
+from tools import prompts  # noqa: F401
 
-# The imported modules register their tools via decorators.  No further
-# action is required here.
+# The imported modules register their tools and prompts via
+# decorators.  No further action is required here.

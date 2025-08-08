@@ -15,7 +15,10 @@ server blocks until it is terminated by the client.
 
 from __future__ import annotations
 
-from server import mcp
+# Import the shared MCP server instance.  Use an absolute import so
+# that the module can be executed directly (``python main.py``) or via
+# uv (``uv run main.py``) without relying on package-relative imports.
+from server import mcp  # type: ignore
 
 
 if __name__ == "__main__":

@@ -11,8 +11,11 @@ from __future__ import annotations
 
 from typing import Dict, Any, Optional
 
-from utils import fpl_data
-from server import mcp
+# Absolute imports so that this module can be run from the project
+# root using uv or python without a package context.  Avoid leading
+# dots for relative imports.
+from utils import fpl_data  # type: ignore
+from server import mcp  # type: ignore
 
 
 @mcp.tool()
