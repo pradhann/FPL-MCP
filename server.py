@@ -44,10 +44,18 @@ mcp = FastMCP("fpl_mcp")
 # with the server.  Use absolute imports rather than package-relative
 # ones so that the code works when run from the project root.
 # pylint: disable=unused-import
+# Import tool modules so their decorated functions register with the server.
 from tools import query_tools  # noqa: F401
-from tools import team_tools   # noqa: F401
+from tools import team_tools  # noqa: F401
 from tools import general_tools  # noqa: F401
 from tools import prompts  # noqa: F401
+from tools import video_tools  # noqa: F401
+from tools import transcript_tools  # noqa: F401
+
+# Authentication and transfer tools
+# Authentication and transfer tools have been removed.  They were
+# experimental and are no longer part of this project.  To avoid
+# import errors, we do not import them here.
 
 # The imported modules register their tools and prompts via
 # decorators.  No further action is required here.

@@ -22,4 +22,5 @@ from server import mcp  # type: ignore
 
 
 if __name__ == "__main__":
+    print("Starting FPL MCP server...")
     mcp.run()

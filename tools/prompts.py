@@ -108,3 +108,103 @@ def fpl_query_guidance() -> str:
         "team_a_score and finished. Fields for teams include id, name, short_name and strength_* fields. "
         "Ensure numeric comparisons use numbers (e.g. 25.0 for selected_by_percent)."
     )
+
+
+@mcp.prompt()
+def video_summary_guidance() -> str:
+    """
+    Guidance for summarising FPL YouTube videos.
+
+    This prompt tells the language model how and when to use the
+    ``summarise_fpl_youtube`` tool.  When a user provides a YouTube
+    link to a Fantasy Premier League podcast, preview or analysis
+    video and asks for a summary, recommended players or insights,
+    call the ``summarise_fpl_youtube`` tool with the ``url``
+    parameter set to the full video URL.
+
+    The tool returns a dictionary with four keys:
+
+    - ``summary`` (str): A concise overall summary (about 600
+      characters) covering the main talking points.  It prioritises
+      sentences containing FPL keywords such as player names,
+      captaincy, fixtures and rotation.
+
+    - ``players`` (list): Up to ten of the most frequently
+      mentioned players.  Each entry has ``player_name`` and
+      ``reasoning`` fields.  Reasoning combines transcript lines
+      mentioning price, minutes, rotation, fixtures, etc., and
+      includes the player's FPL price and position.
+
+    - ``main_points`` (list): A list of broader topics discussed
+      during the video (e.g. "Captaincy", "Differentials", "Fixtures
+      Analysis").  Each entry has ``topic`` and ``summary`` fields
+      summarising the key points from the transcript.
+
+    - ``video_id`` (str): The YouTube video ID for reference.
+
+    Example call:
+
+    .. code-block:: json
+
+        {
+          "url": "https://www.youtube.com/watch?v=DFlm3_EIbko"
+        }
+
+    You generally do not need to present the ``video_id`` to the
+    user unless they explicitly ask for it.  Use ``summary`` and
+    ``main_points`` to answer high-level questions about the video's
+    content, and use ``players`` to provide actionable
+    recommendations or insights.
+    """
+    return (
+        "When given a YouTube link to an FPL-related podcast or video and asked to summarise or "
+        "extract recommendations, use the `summarise_fpl_youtube` tool. Pass the full URL in the "
+        "`url` parameter. The tool returns a concise overall 'summary' of the video, a list of up "
+        "to ten recommended players with reasoning (including their price and position), and a list "
+        "of broader 'main_points' topics with brief summaries. It also returns the video ID for reference."
+    )
+
+
+@mcp.prompt()
+def transcript_summary_guidance() -> str:
+    """
+    Guidance on summarising raw YouTube transcripts for FPL analysis.
+
+    When you call ``fetch_youtube_transcript`` with a YouTube URL,
+    you'll receive a raw transcript as plain text.  This transcript
+    likely contains filler words (e.g. "uh", "you know"), greetings
+    and irrelevant chatter.  To extract actionable information for
+    Fantasy Premier League (FPL), follow these steps:
+
+    1. **Clean the text**: Ignore or remove obvious filler phrases and
+       pleasantries.  Focus on sentences that mention player names,
+       prices, positions, fixtures, minutes, rotation, captaincy,
+       differentials, chip strategies (wildcard, bench boost, free hit)
+       and other FPL‑relevant topics.
+
+    2. **Identify players**: Cross‑reference names in the transcript
+       against the list of Premier League players.  For each player
+       discussed, note why they were mentioned (e.g. "cheap enabler",
+       "minutes risk", "captaincy option", "great upcoming fixtures").
+
+    3. **Extract themes**: Group the discussion into high‑level topics
+       such as Captaincy, Fixtures Analysis, Differentials, Rotation,
+       Chip Strategy, Goalkeepers, etc.  Summarise the key points
+       raised under each theme in one or two sentences.
+
+    4. **Compose a summary**: Write a short paragraph (3–5 sentences)
+       that captures the overall narrative of the video.  Mention the
+       main themes and the standout recommendations without going into
+       exhaustive detail.
+
+    5. **Answer questions**: If the user asks specific questions
+       about the video (e.g. "Who did they recommend as captain?"),
+       search the transcript for relevant lines and summarise those
+       answers using the context you extracted.
+
+    By following this guidance, you can turn a raw transcript into
+    meaningful FPL insights that include recommended players, their
+    rationale (price, minutes, fixtures, etc.), and high‑level
+    strategic advice.
+    """
+    return "To summarise a raw YouTube transcript for FPL, ignore filler and focus on lines that mention players, prices, minutes, rotation, fixtures, captaincy, differentials or chip strategies.  Extract the players mentioned and note why they were discussed.  Group the discussion into themes such as Captaincy, Fixtures Analysis, Differentials, Rotation and Chip Strategy, and summarise each in one or two sentences.  Finally write a concise paragraph capturing the overall narrative of the video.  Use the transcript context to answer follow‑up questions about recommendations or strategies."
