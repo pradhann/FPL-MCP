@@ -7,6 +7,40 @@ substitutes the original CSV/Parquet examples for live FPL API
 endpoints. The goal is to make it easy to query player and team data
 using natural language via Claude for Desktop or any other MCP client.
 
+---
+
+## Usage
+
+To run the server locally:
+
+1. **Run the server**
+
+   ```bash
+   python main.py
+   ```
+
+2. **Claude Desktop configuration**
+   Add the following to your Claude configuration file (`claude_desktop_config.json` or equivalent), replacing `/path/to/fpl_server` with the absolute path to your local `fpl_server` directory:
+
+   ```json
+   {
+     "mcpServers": {
+       "fpl-server": {
+         "command": "python3",
+         "args": [
+           "/path/to/fpl_server/main.py"
+         ],
+         "env": {
+           "PYTHONPATH": "/path/to/fpl_server"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Check in Claude Desktop**
+   Restart Claude Desktop and verify that the `fpl-server` MCP server appears in the connected servers list.
+
 ## Folder Layout
 
 ```
