@@ -51,6 +51,7 @@ from tools import general_tools  # noqa: F401
 from tools import prompts  # noqa: F401
 from tools import video_tools  # noqa: F401
 from tools import transcript_tools  # noqa: F401
+from tools import expert_tools
 
 # Authentication and transfer tools
 # Authentication and transfer tools have been removed.  They were
